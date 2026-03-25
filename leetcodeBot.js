@@ -1,8 +1,13 @@
 const axios = require("axios");
 const puppeteer = require("puppeteer");
 
+// -----------------------------
+// ✅ CHECK LEETCODE SUBMISSION
+// -----------------------------
 async function checkSubmittedToday() {
   try {
+    console.log("Checking submission...");
+
     const res = await axios.post(
       "https://leetcode.com/graphql",
       {
@@ -35,12 +40,15 @@ async function checkSubmittedToday() {
   }
 }
 
+// -----------------------------
+// ✅ SUBMIT SOLUTION
+// -----------------------------
 async function submitSolution() {
   console.log("Launching browser...");
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
   const page = await browser.newPage();
@@ -51,30 +59,51 @@ async function submitSolution() {
     {
       name: "LEETCODE_SESSION",
       value: process.env.LEETCODE_SESSION,
-      domain: ".leetcode.com"
+      domain: ".leetcode.com",
+      path: "/",
+      httpOnly: true,
+      secure: true
     },
     {
       name: "csrftoken",
       value: process.env.CSRF_TOKEN,
-      domain: ".leetcode.com"
+      domain: ".leetcode.com",
+      path: "/",
+      secure: true
     }
   );
 
-  console.log("Opening problem...");
+  console.log("Opening LeetCode homepage...");
+
+  await page.goto("https://leetcode.com/", {
+    waitUntil: "networkidle2"
+  });
+
+  console.log("Opening problem page...");
 
   await page.goto("https://leetcode.com/problems/two-sum/", {
     waitUntil: "networkidle2"
   });
 
-  // Wait for editor (more reliable than textarea)
-  await page.waitForSelector('[data-cy="code-editor"]', { timeout: 15000 });
+  // ❗ Check login
+  if (page.url().includes("login")) {
+    await page.screenshot({ path: "debug.png" });
+    throw new Error("❌ Not logged in - cookies invalid");
+  }
+
+  console.log("Waiting for editor...");
+
+  await page.waitForSelector("textarea, .monaco-editor", {
+    timeout: 20000
+  });
 
   console.log("Injecting code...");
 
   await page.evaluate(() => {
-    const editor = document.querySelector('[data-cy="code-editor"]');
-    if (editor) {
-      editor.innerText = `
+    const textarea = document.querySelector("textarea");
+
+    if (textarea) {
+      textarea.value = `
 class Solution {
   twoSum(nums, target) {
     return [0,1];
@@ -89,18 +118,26 @@ class Solution {
 
   console.log("Clicking submit...");
 
-  await page.click('button[data-cy="submit-code-btn"]');
+  const submitBtn = await page.$('button[data-cy="submit-code-btn"]');
 
-  await new Promise(r => setTimeout(r, 5000));
+  if (!submitBtn) {
+    await page.screenshot({ path: "debug.png" });
+    throw new Error("❌ Submit button not found");
+  }
+
+  await submitBtn.click();
+
+  await new Promise(r => setTimeout(r, 8000));
 
   console.log("Submitted!");
 
   await browser.close();
 }
 
+// -----------------------------
+// 🚀 MAIN FLOW
+// -----------------------------
 (async () => {
-  console.log("Checking submission...");
-
   const submitted = await checkSubmittedToday();
 
   if (submitted) {
