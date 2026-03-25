@@ -1,0 +1,23 @@
+name: LeetCode Auto Bot
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # daily (IST night)
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run bot
+        env:
+          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
+          CSRF_TOKEN: ${{ secrets.CSRF_TOKEN }}
+        run: node leetcodeBot.js
