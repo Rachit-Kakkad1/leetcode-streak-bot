@@ -2,7 +2,7 @@ const axios = require("axios");
 const puppeteer = require("puppeteer");
 
 // -----------------------------
-// ✅ CHECK LEETCODE SUBMISSION
+// ✅ SAFE CHECK FUNCTION
 // -----------------------------
 async function checkSubmittedToday() {
   try {
@@ -25,7 +25,7 @@ async function checkSubmittedToday() {
     const list = res?.data?.data?.recentSubmissionList;
 
     if (!list || list.length === 0) {
-      console.log("No submissions found or not logged in");
+      console.log("⚠️ Not logged in or no submissions");
       return false;
     }
 
@@ -35,117 +35,131 @@ async function checkSubmittedToday() {
     return (now - last) < 86400;
 
   } catch (err) {
-    console.log("Error fetching submissions:", err.message);
+    console.log("⚠️ API error:", err.message);
     return false;
   }
 }
 
 // -----------------------------
-// ✅ SUBMIT SOLUTION
+// ✅ SUBMIT FUNCTION (SAFE)
 // -----------------------------
 async function submitSolution() {
-  console.log("Launching browser...");
+  let browser;
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+  try {
+    console.log("Launching browser...");
 
-  const page = await browser.newPage();
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
 
-  console.log("Setting cookies...");
+    const page = await browser.newPage();
 
-  await page.setCookie(
-    {
-      name: "LEETCODE_SESSION",
-      value: process.env.LEETCODE_SESSION,
-      domain: ".leetcode.com",
-      path: "/",
-      httpOnly: true,
-      secure: true
-    },
-    {
-      name: "csrftoken",
-      value: process.env.CSRF_TOKEN,
-      domain: ".leetcode.com",
-      path: "/",
-      secure: true
+    // 🧠 Step 1: Open domain FIRST
+    await page.goto("https://leetcode.com", {
+      waitUntil: "networkidle2"
+    });
+
+    // 🧠 Step 2: Apply cookies
+    console.log("Setting cookies...");
+
+    await page.setCookie(
+      {
+        name: "LEETCODE_SESSION",
+        value: process.env.LEETCODE_SESSION,
+        domain: ".leetcode.com",
+        path: "/",
+        httpOnly: true,
+        secure: true
+      },
+      {
+        name: "csrftoken",
+        value: process.env.CSRF_TOKEN,
+        domain: ".leetcode.com",
+        path: "/",
+        secure: true
+      }
+    );
+
+    // 🧠 Step 3: Reload to activate session
+    await page.reload({ waitUntil: "networkidle2" });
+
+    // 🧠 Step 4: Go to problem
+    console.log("Opening problem...");
+
+    await page.goto("https://leetcode.com/problems/two-sum/", {
+      waitUntil: "networkidle2"
+    });
+
+    // ❗ Detect login failure
+    if (page.url().includes("login")) {
+      await page.screenshot({ path: "debug.png" });
+      console.log("❌ LOGIN FAILED (cookies invalid)");
+      return;
     }
-  );
 
-  console.log("Opening LeetCode homepage...");
+    console.log("Waiting for editor...");
 
-  await page.goto("https://leetcode.com/", {
-    waitUntil: "networkidle2"
-  });
+    // 🧠 Flexible selector
+    await page.waitForSelector("textarea, .monaco-editor", {
+      timeout: 25000
+    });
 
-  console.log("Opening problem page...");
+    console.log("Injecting code...");
 
-  await page.goto("https://leetcode.com/problems/two-sum/", {
-    waitUntil: "networkidle2"
-  });
-
-  // ❗ Check login
-  if (page.url().includes("login")) {
-    await page.screenshot({ path: "debug.png" });
-    throw new Error("❌ Not logged in - cookies invalid");
-  }
-
-  console.log("Waiting for editor...");
-
-  await page.waitForSelector("textarea, .monaco-editor", {
-    timeout: 20000
-  });
-
-  console.log("Injecting code...");
-
-  await page.evaluate(() => {
-    const textarea = document.querySelector("textarea");
-
-    if (textarea) {
-      textarea.value = `
+    await page.evaluate(() => {
+      const textarea = document.querySelector("textarea");
+      if (textarea) {
+        textarea.value = `
 class Solution {
   twoSum(nums, target) {
     return [0,1];
   }
 }
-      `;
+        `;
+      }
+    });
+
+    await new Promise(r => setTimeout(r, 3000));
+
+    console.log("Submitting...");
+
+    const btn = await page.$('button[data-cy="submit-code-btn"]');
+
+    if (!btn) {
+      await page.screenshot({ path: "debug.png" });
+      console.log("❌ Submit button not found");
+      return;
     }
-  });
 
-  console.log("Waiting before submit...");
-  await new Promise(r => setTimeout(r, 3000));
+    await btn.click();
 
-  console.log("Clicking submit...");
+    await new Promise(r => setTimeout(r, 8000));
 
-  const submitBtn = await page.$('button[data-cy="submit-code-btn"]');
+    console.log("✅ Submitted successfully");
 
-  if (!submitBtn) {
-    await page.screenshot({ path: "debug.png" });
-    throw new Error("❌ Submit button not found");
+  } catch (err) {
+    console.log("❌ ERROR:", err.message);
+  } finally {
+    if (browser) await browser.close();
   }
-
-  await submitBtn.click();
-
-  await new Promise(r => setTimeout(r, 8000));
-
-  console.log("Submitted!");
-
-  await browser.close();
 }
 
 // -----------------------------
-// 🚀 MAIN FLOW
+// 🚀 MAIN
 // -----------------------------
 (async () => {
+  console.log("Env check:", !!process.env.LEETCODE_SESSION, !!process.env.CSRF_TOKEN);
+
   const submitted = await checkSubmittedToday();
 
   if (submitted) {
-    console.log("Already solved today ✅");
+    console.log("✅ Already solved today");
     return;
   }
 
-  console.log("No submission today ❌ → submitting...");
+  console.log("❌ Not solved today → attempting submit");
 
   await submitSolution();
 })();
